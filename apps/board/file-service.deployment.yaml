@@ -17,7 +17,7 @@ spec:
         - name: ghcr-regcred
       containers:
         - name: file-service
-          image: ghcr.io/drsol-ha/board-file-service:v1
+          image: ghcr.io/drsol-ha/board-file-service:v2
           ports:
             - containerPort: 5003
           env:
