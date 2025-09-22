@@ -1,0 +1,41 @@
+tenant:
+  name: tenant1
+  
+  configSecret:
+    name: tenant1-creds-secret
+    existingSecret: false
+    accessKey: minio
+    secretKey: minio123
+
+  pools:
+    - name: pool-0
+      servers: 3
+      volumesPerServer: 4
+      size: 9Gi
+      storageClassName: local-path
+  podManagementPolicy: Parallel
+  nodeSelector:
+    minio: "storage"
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: v1.min.io/tenant
+                operator: In
+                values: ["tenant1"]
+          topologyKey: "kubernetes.io/hostname"
+
+exposeServices:
+  minio: 
+    type: ClusterIP
+  console:
+    type: ClusterIP
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  apiHost: minio.board.local         
+  consoleHost: console.board.local  
+  tls:
+    enabled: false

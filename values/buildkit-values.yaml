@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: buildkit
+  labels:
+    pod-security.kubernetes.io/enforce: "restricted"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildkitd
+  namespace: buildkit
+  labels: { app: buildkitd }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: buildkitd }
+  template:
+    metadata:
+      labels: { app: buildkitd }
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: buildkitd
+        image: moby/buildkit:rootless
+        args:
+          - --addr=tcp://0.0.0.0:1234
+          - --tlscacert=/tls/ca.crt
+          - --tlscert=/tls/server.crt
+          - --tlskey=/tls/server.key
+          # 상태 디렉터리를 쓰기가능한 경로로 고정
+          - --root=/home/user/.local/share/buildkit
+          # 쿠버네티스에서 rootless 안정화 옵션
+          - --oci-worker-no-process-sandbox
+        env:
+          - name: BUILDKIT_ROOTLESS
+            value: "1"
+          - name: XDG_RUNTIME_DIR
+            value: /run/user/1000
+        ports:
+        - { name: grpc, containerPort: 1234 }
+        securityContext:
+          runAsUser: 1000
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+          - { name: tls,    mountPath: /tls, readOnly: true }
+          - { name: state,  mountPath: /home/user/.local/share/buildkit } # 상태
+          - { name: runtime,mountPath: /run/user/1000 }                   # 소켓
+          - { name: tmp,    mountPath: /tmp }                             # 임시
+      volumes:
+        - name: tls
+          secret: { secretName: buildkit-tls }
+        - name: state
+          emptyDir: {}
+        - name: runtime
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: buildkitd
+  namespace: buildkit
+spec:
+  type: ClusterIP
+  selector: { app: buildkitd }
+  ports:
+    - { name: grpc, port: 1234, targetPort: grpc }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: buildkitd-allow-from-ci
+  namespace: buildkit
+spec:
+  podSelector: { matchLabels: { app: buildkitd } }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ci
+      ports: [{ protocol: TCP, port: 1234 }]

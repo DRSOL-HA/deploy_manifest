@@ -1,0 +1,27 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: minio-metrics
+  namespace: minio-tenant
+  labels:
+    # release: kps  # 굳이 안 써도 전역 수집 설정이면 OK
+spec:
+  selector:
+    matchLabels:
+      v1.min.io/tenant: tenant1     # 실제 svc 라벨 확인 후 맞추기
+  namespaceSelector:
+    matchNames: ["minio-tenant"]
+  endpoints:
+    - targetPort: 9000
+      path: /minio/v2/metrics/node
+      interval: 30s
+      bearerTokenSecret:
+        name: minio-prom-token      # kubectl 로 만든 Secret
+        key: token
+    - targetPort: 9000
+      path: /minio/v2/metrics/cluster
+      interval: 30s
+      bearerTokenSecret:
+        name: minio-prom-token
+        key: token
+

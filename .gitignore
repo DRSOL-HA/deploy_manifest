@@ -1,0 +1,8 @@
+/kubespray/
+/argocd-linux-amd64
+/secrets/
+*.key
+*.crt
+*.csr
+*.pem
+openssl-*.cnf

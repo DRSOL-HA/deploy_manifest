@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: webboard
+  namespace: argocd
+spec:
+  project: webboard
+  source:
+    repoURL: git@github.com:DRSOL-HA/webboard_deploy.git
+    targetRevision: main
+    path: environments/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: board
+  syncPolicy: 
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
