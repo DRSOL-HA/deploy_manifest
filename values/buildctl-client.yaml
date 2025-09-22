@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: buildctl-client
+  namespace: ci
+spec:
+  restartPolicy: Never
+  containers:
+    - name: buildctl
+      image: moby/buildkit:latest
+      command: ["sh","-c","sleep infinity"]
+      volumeMounts:
+        - name: tls
+          mountPath: /tls
+          readOnly: true
+  volumes:
+    - name: tls
+      secret:
+        secretName: buildkit-client-tls

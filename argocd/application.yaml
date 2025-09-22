@@ -4,11 +4,11 @@ metadata:
   name: webboard
   namespace: argocd
 spec:
-  project: webboard
+  project: default
   source:
-    repoURL: git@github.com:DRSOL-HA/webboard_deploy.git
+    repoURL: git@github.com:DRSOL-HA/deploy_manifest.git
     targetRevision: main
-    path: environments/dev
+    path: .
   destination:
     server: https://kubernetes.default.svc
     namespace: board
