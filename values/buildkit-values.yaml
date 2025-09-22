@@ -39,6 +39,8 @@ spec:
             value: "1"
           - name: XDG_RUNTIME_DIR
             value: /run/user/1000
+          - name: HOME
+            value: /home/user    
         ports:
         - { name: grpc, containerPort: 1234 }
         securityContext:
@@ -53,6 +55,7 @@ spec:
           - { name: state,  mountPath: /home/user/.local/share/buildkit } # 상태
           - { name: runtime,mountPath: /run/user/1000 }                   # 소켓
           - { name: tmp,    mountPath: /tmp }                             # 임시
+          - { name: home,   mountPath: /home/user }  
       volumes:
         - name: tls
           secret: { secretName: buildkit-tls }
@@ -62,6 +65,8 @@ spec:
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+        - name: home
+          emptyDir: {}    
 ---
 apiVersion: v1
 kind: Service
