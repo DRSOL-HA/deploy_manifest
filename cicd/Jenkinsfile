@@ -1,8 +1,8 @@
 def REPOS = [
-  "user-service": "git@github.com:DRSOL-HA/board-user-service.git",
-  "file-service": "git@github.com:DRSOL-HA/board-file-service.git",
-  "post-service": "git@github.com:DRSOL-HA/board-post-service.git",
-  "frontend"    : "git@github.com:DRSOL-HA/board-frontend.git",
+  'user-service': 'git@github.com:DRSOL-HA/board-user-service.git',
+  'file-service': 'git@github.com:DRSOL-HA/board-file-service.git',
+  'post-service': 'git@github.com:DRSOL-HA/board-post-service.git',
+  'frontend'    : 'git@github.com:DRSOL-HA/board-frontend.git',
 ]
 
 pipeline {
@@ -11,20 +11,14 @@ pipeline {
       yaml """
 apiVersion: v1
 kind: Pod
-metadata:
-  labels:
-    jenkins: buildkit
+metadata: { labels: { jenkins: buildkit } }
 spec:
   serviceAccountName: jenkins
   containers:
   - name: buildctl
     image: moby/buildkit:rootless
-    command: ['cat']
-    tty: true
-    volumeMounts:
-    - name: tls
-      mountPath: /tls
-      readOnly: true
+    command: ['cat']; tty: true
+    volumeMounts: [{ name: tls, mountPath: /tls, readOnly: true }]
   - name: git
     image: alpine/git:2.45.2
     command: ['cat']; tty: true
@@ -33,40 +27,53 @@ spec:
     command: ['cat']; tty: true
   volumes:
   - name: tls
-    secret:
-      secretName: buildkit-client-tls
+    secret: { secretName: buildkit-client-tls }
 """
     }
   }
 
   parameters {
-    choice(name: 'SERVICE',
-           choices: ['user-service','file-service','post-service','frontend'].join('\n'),
-           description: '빌드/배포할 서비스')
+    choice(
+      name: 'SERVICE',
+      choices: 'user-service\nfile-service\npost-service\nfrontend',
+      description: '빌드/배포할 서비스'
+    )
     string(name: 'BRANCH', defaultValue: 'main', description: '서비스 코드 브랜치')
-    string(name: 'IMAGE_TAG', defaultValue: "v${env.BUILD_NUMBER}", description: '푸시할 이미지 태그')
+    string(name: 'IMAGE_TAG', defaultValue: '', description: '비우면 v<빌드번호>')
   }
 
   environment {
-    REGISTRY = 'ghcr.io/DRSOL-HA'
+    REGISTRY      = 'ghcr.io/DRSOL-HA'
     BUILDKIT_ADDR = 'tcp://buildkitd.buildkit.svc.cluster.local:1234'
+    // IMAGE_TAG는 아래 Prepare environment 스테이지에서 동적으로 할당됩니다.
+    IMAGE_TAG     = ''
   }
 
-  options { timestamps() }
-
   stages {
+    // === 추가된 스테이지 ===
+    stage('Prepare environment') {
+      steps {
+        script {
+          // params.IMAGE_TAG가 비어있으면 빌드 번호를 사용하고, 아니면 그 값을 사용합니다.
+          // 이 값을 env.IMAGE_TAG에 할당하여 모든 스테이지에서 사용할 수 있도록 합니다.
+          env.IMAGE_TAG = params.IMAGE_TAG.isEmpty() ? "v${env.BUILD_NUMBER}" : params.IMAGE_TAG
+          echo "Image tag set to: ${env.IMAGE_TAG}"
+        }
+      }
+    }
+
     stage('Checkout service code') {
       steps {
-        def repoUrl = REPOS[params.SERVICE]
         container('git') {
           sshagent(credentials: ['GITOPS_DEPLOY_KEY']) {
-            sh '''
+            sh """
               set -eux
+              mkdir -p ~/.ssh
+              ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
+
               rm -rf src && mkdir -p src
-              cd src
-              REPO="${REPOS[$SERVICE]}"
-              git clone --depth=1 -b "$BRANCH" "$REPO" app
-            '''
+              git clone --depth=1 -b '${params.BRANCH}' '${REPOS[params.SERVICE]}' src/app
+            """
           }
         }
       }
@@ -75,23 +82,25 @@ spec:
     stage('Build & Push image') {
       steps {
         container('buildctl') {
-          withCredentials([usernamePassword(credentialsId: 'ghcr', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_PAT')]) {
-            sh '''
+          withCredentials([usernamePassword(credentialsId: 'ghcr',
+            usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_PAT')]) {
+            sh """
               set -eux
-              IMAGE_NAME="${REGISTRY}/board-${SERVICE}"
-              export HOME=$WORKSPACE
-              mkdir -p $HOME/.docker
-              AUTH=$(printf "%s:%s" "$GHCR_USER" "$GHCR_PAT" | base64 -w0)
-              cat > $HOME/.docker/config.json <<EOF
-              { "auths": { "ghcr.io": { "auth": "$AUTH" } } }
+              IMAGE_NAME='${env.REGISTRY}/board-${params.SERVICE}'
+
+              export HOME=\$WORKSPACE
+              mkdir -p \$HOME/.docker
+              AUTH=\$(printf "%s:%s" "\$GHCR_USER" "\$GHCR_PAT" | base64 -w0)
+              cat > \$HOME/.docker/config.json <<EOF
+              { "auths": { "ghcr.io": { "auth": "\$AUTH" } } }
               EOF
 
-              buildctl --addr ${BUILDKIT_ADDR} \
+              buildctl --addr ${env.BUILDKIT_ADDR} \
                 --tlscacert /tls/ca.crt --tlscert /tls/client.crt --tlskey /tls/client.key \
                 build --frontend=dockerfile.v0 \
                 --local context=src/app --local dockerfile=src/app \
-                --output type=image,name=${IMAGE_NAME}:${IMAGE_TAG},push=true
-            '''
+                --output type=image,name=\$IMAGE_NAME:${env.IMAGE_TAG},push=true
+            """
           }
         }
       }
@@ -101,34 +110,38 @@ spec:
       steps {
         container('git') {
           sshagent(credentials: ['GITOPS_DEPLOY_KEY']) {
-            sh '''
+            sh """
               set -eux
-              rm -rf manifest && mkdir manifest && cd manifest
-              git clone --depth=1 git@github.com:DRSOL-HA/deploy_manifest.git repo
-              cd repo
+              mkdir -p ~/.ssh
+              ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
+
+              rm -rf manifest && mkdir -p manifest
+              git clone --depth=1 git@github.com:DRSOL-HA/deploy_manifest.git manifest/repo
+              cd manifest/repo
               git config user.name  "jenkins"
               git config user.email "ci@drsol-ha.local"
-            '''
+            """
           }
         }
         container('yq') {
-          sh '''
+          sh """
             set -eux
             cd manifest/repo
             FILE="apps/board/kustomization.yaml"
-            IMG_NAME="ghcr.io/DRSOL-HA/board-${SERVICE}"
-            yq -i '( .images[] | select(.name == strenv(IMG_NAME)).newTag ) = strenv(IMAGE_TAG)' "$FILE"
-          '''
+            IMG_NAME="ghcr.io/DRSOL-HA/board-${params.SERVICE}"
+            # 전역 env 변수를 직접 사용
+            yq -i '( .images[] | select(.name == strenv(IMG_NAME)).newTag ) = "${env.IMAGE_TAG}"' "\$FILE"
+          """
         }
         container('git') {
           sshagent(credentials: ['GITOPS_DEPLOY_KEY']) {
-            sh '''
+            sh """
               set -eux
               cd manifest/repo
               git add apps/board/kustomization.yaml
-              git commit -m "ci: bump ${SERVICE} -> ${IMAGE_TAG}" || true
+              git commit -m "ci: bump ${params.SERVICE} -> ${env.IMAGE_TAG}" || true
               git push origin HEAD:main
-            '''
+            """
           }
         }
       }
