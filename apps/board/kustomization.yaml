@@ -11,3 +11,13 @@ resources:
   - post-service.service.yaml
   - file-service.deployment.yaml
   - file-service.service.yaml
+
+images:
+  - name: ghcr.io/DRSOL-HA/board-user-service
+    newTag: "0.0.0"
+  - name: ghcr.io/DRSOL-HA/board-file-service
+    newTag: "0.0.0"
+  - name: ghcr.io/DRSOL-HA/board-post-service
+    newTag: "0.0.0"
+  - name: ghcr.io/DRSOL-HA/board-frontend
+    newTag: "0.0.0"  

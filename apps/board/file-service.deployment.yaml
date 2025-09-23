@@ -49,3 +49,5 @@ spec:
           envFrom:
             - secretRef:
                 name: minio-credentials
+            - configMapReg:
+                name: file-s3-config

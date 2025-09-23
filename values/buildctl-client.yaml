@@ -8,12 +8,21 @@ spec:
   containers:
     - name: buildctl
       image: moby/buildkit:latest
-      command: ["sh","-c","sleep infinity"]
+      command: ["sh","-c","sleep 36000"]
+      env:
+        - name: DOCKER_CONFIG
+          value: /docker  
       volumeMounts:
         - name: tls
           mountPath: /tls
           readOnly: true
+        - name: ghcr
+          mountPath: /docker/config.json
+          subPath: .dockerconfigjson
+          readOnly: true    
   volumes:
     - name: tls
       secret:
         secretName: buildkit-client-tls
+    - name: ghcr
+        secretName: ghcr-cred      
