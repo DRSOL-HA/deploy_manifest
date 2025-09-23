@@ -8,26 +8,36 @@ def REPOS = [
 pipeline {
   agent {
     kubernetes {
+      // === YAML 문법 및 스타일 전체 수정 ===
       yaml """
 apiVersion: v1
 kind: Pod
-metadata: { labels: { jenkins: buildkit } }
+metadata:
+  labels:
+    jenkins: buildkit
 spec:
   serviceAccountName: jenkins
   containers:
   - name: buildctl
     image: moby/buildkit:rootless
-    command: ['cat']; tty: true
-    volumeMounts: [{ name: tls, mountPath: /tls, readOnly: true }]
+    command: ["cat"]
+    tty: true
+    volumeMounts:
+    - name: tls
+      mountPath: /tls
+      readOnly: true
   - name: git
     image: alpine/git:2.45.2
-    command: ['cat']; tty: true
+    command: ["cat"]
+    tty: true
   - name: yq
     image: ghcr.io/mikefarah/yq:4
-    command: ['cat']; tty: true
+    command: ["cat"]
+    tty: true
   volumes:
   - name: tls
-    secret: { secretName: buildkit-client-tls }
+    secret:
+      secretName: buildkit-client-tls
 """
     }
   }
@@ -43,19 +53,15 @@ spec:
   }
 
   environment {
-    REGISTRY      = 'ghcr.io/DRSOL-HA'
+    REGISTRY      = 'ghcr.io/drsol-ha'
     BUILDKIT_ADDR = 'tcp://buildkitd.buildkit.svc.cluster.local:1234'
-    // IMAGE_TAG는 아래 Prepare environment 스테이지에서 동적으로 할당됩니다.
     IMAGE_TAG     = ''
   }
 
   stages {
-    // === 추가된 스테이지 ===
     stage('Prepare environment') {
       steps {
         script {
-          // params.IMAGE_TAG가 비어있으면 빌드 번호를 사용하고, 아니면 그 값을 사용합니다.
-          // 이 값을 env.IMAGE_TAG에 할당하여 모든 스테이지에서 사용할 수 있도록 합니다.
           env.IMAGE_TAG = params.IMAGE_TAG.isEmpty() ? "v${env.BUILD_NUMBER}" : params.IMAGE_TAG
           echo "Image tag set to: ${env.IMAGE_TAG}"
         }
@@ -88,16 +94,16 @@ spec:
               set -eux
               IMAGE_NAME='${env.REGISTRY}/board-${params.SERVICE}'
 
-              export HOME=\$WORKSPACE
-              mkdir -p \$HOME/.docker
-              AUTH=\$(printf "%s:%s" "\$GHCR_USER" "\$GHCR_PAT" | base64 -w0)
-              cat > \$HOME/.docker/config.json <<EOF
-              { "auths": { "ghcr.io": { "auth": "\$AUTH" } } }
+              export HOME=$WORKSPACE
+              mkdir -p $HOME/.docker
+              AUTH=$(printf "%s:%s" "$GHCR_USER" "$GHCR_PAT" | base64 | tr -d '\\n')
+              cat > "$DOCKER_CONFIG/config.json" <<EOF
+              { "auths": { "ghcr.io": { "auth": "$AUTH" } } }
               EOF
 
               buildctl --addr ${env.BUILDKIT_ADDR} \
                 --tlscacert /tls/ca.crt --tlscert /tls/client.crt --tlskey /tls/client.key \
-                build --frontend=dockerfile.v0 \
+                build --frontend=dockerfile.v0 --progress=plain \
                 --local context=src/app --local dockerfile=src/app \
                 --output type=image,name=\$IMAGE_NAME:${env.IMAGE_TAG},push=true
             """
@@ -113,7 +119,7 @@ spec:
             sh """
               set -eux
               mkdir -p ~/.ssh
-              ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
+              ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> ~/.ssh/known_hosts
 
               rm -rf manifest && mkdir -p manifest
               git clone --depth=1 git@github.com:DRSOL-HA/deploy_manifest.git manifest/repo
@@ -129,7 +135,6 @@ spec:
             cd manifest/repo
             FILE="apps/board/kustomization.yaml"
             IMG_NAME="ghcr.io/DRSOL-HA/board-${params.SERVICE}"
-            # 전역 env 변수를 직접 사용
             yq -i '( .images[] | select(.name == strenv(IMG_NAME)).newTag ) = "${env.IMAGE_TAG}"' "\$FILE"
           """
         }
