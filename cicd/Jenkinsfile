@@ -57,6 +57,7 @@ spec:
   stages {
     stage('Checkout service code') {
       steps {
+        def repoUrl = REPOS[params.SERVICE]
         container('git') {
           sshagent(credentials: ['GITOPS_DEPLOY_KEY']) {
             sh '''
