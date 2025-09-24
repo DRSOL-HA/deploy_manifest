@@ -154,7 +154,31 @@ spec:
             '''
           }
         }
-
+        
+    stage('Sanity: PAT access check') {
+      steps {
+        container('git') {
+          withCredentials([usernamePassword(
+            credentialsId: '2ebc3d3c-d09f-4180-8a21-74f50626cd2b',
+            usernameVariable: 'GH_USER',
+            passwordVariable: 'GH_PAT'
+          )]) {
+            sh '''
+              set -euo pipefail
+              REPO="DRSOL-HA/board-user-service"
+              { set +x; } 2>/dev/null
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                -H "Authorization: Bearer $GH_PAT" \
+                "https://api.github.com/repos/$REPO")
+              { set -x; } 2>/dev/null || true
+              echo "GitHub API for $REPO -> HTTP $CODE"
+              test "$CODE" = "200"
+            '''
+          }
+        }
+      }
+    }
+        
         // yq로 newTag 갱신
         container('yq') {
           withEnv(["SERVICE=${params.SERVICE}"]) {
