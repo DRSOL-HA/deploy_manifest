@@ -13,6 +13,10 @@ spec:
       labels:
         app: file-service
     spec:
+      volumes:
+        - name: minio-ca
+          secret:
+            secretName: minio-ca
       imagePullSecrets:
         - name: ghcr-regcred
       containers:
@@ -20,7 +24,13 @@ spec:
           image: ghcr.io/drsol-ha/board-file-service:v2
           ports:
             - containerPort: 5003
+          volumeMounts:
+            - name: minio-ca
+              mountPaht: /etc/pki/minio
+              readOnly: true
           env:
+            - name: AWS_CA_BUNDLE
+              value: /etc/pki/minio/ca.crt
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

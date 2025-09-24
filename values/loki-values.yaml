@@ -1,0 +1,35 @@
+deploymentMode: SimpleScalable
+
+gateway:
+  nginxConfig:
+    resolver: "10.233.0.3"
+
+loki:
+  storage:
+    type: s3
+    bucketNames:
+      chunks: "loki-chunks"
+      ruler: "loki-ruler"
+      admin: "loki-admin"
+    s3:
+      endpoint: "https://minio.minio-tenant.svc:443"  # ← 콘솔 말고 S3 API 서비스
+      accessKeyId: "minio"
+      secretAccessKey: "minio123"
+      s3ForcePathStyle: true
+      insecure: false  # HTTPS 사용
+
+# SimpleScalable에서는 write/backend에 영속화를 설정
+write:
+  persistence:
+    enabled: true
+    storageClassName: "local-path"
+    size: 20Gi
+
+backend:
+  persistence:
+    enabled: true
+    storageClassName: "local-path"
+    size: 20Gi
+
+chunksCache:
+  enabled: false
