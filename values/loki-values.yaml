@@ -18,17 +18,27 @@ loki:
       s3ForcePathStyle: true
       insecure: false  # HTTPS 사용
 
+  schemaConfig:
+    configs:
+      - from: "2020-10-24"
+        store: tsdb
+        object_store: s3
+        schema: v12
+        index:
+          prefix: loki_index_
+          period: 24h
+
 # SimpleScalable에서는 write/backend에 영속화를 설정
 write:
   persistence:
     enabled: true
-    storageClassName: "local-path"
+    storageClass: "local-path"
     size: 20Gi
 
 backend:
   persistence:
     enabled: true
-    storageClassName: "local-path"
+    storageClass: "local-path"
     size: 20Gi
 
 chunksCache:
