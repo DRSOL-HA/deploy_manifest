@@ -109,44 +109,43 @@ spec:
       }
     }
 
-    stage('Resolve build context') {
-      steps {
-        container('git') {
-          withEnv(["SERVICE=${params.SERVICE}"]) {
-            sh '''
-              set -euo pipefail
-              # 후보 경로(모노레포 내 서비스별 디렉터리 관례를 폭넓게 탐지)
-              CANDIDATES=(
-                "services/${SERVICE}"
-                "apps/${SERVICE}"
-                "packages/${SERVICE}"
-                "${SERVICE}"
-                "apps/${SERVICE}/app"         # 예: 프론트/백 중첩
-                "services/${SERVICE}/app"
-              )
-
-              FOUND=""
-              for c in "${CANDIDATES[@]}"; do
-                if [ -d "src/app/$c" ] && ls "src/app/$c"/Dockerfile* >/dev/null 2>&1; then
-                  FOUND="$c"
-                  break
-                fi
-              done
-
-              if [ -z "$FOUND" ]; then
-                echo "ERROR: '${SERVICE}' 서비스의 Dockerfile 경로를 찾지 못했습니다."
-                echo "다음 중 하나에 Dockerfile이 있어야 합니다:"
-                printf ' - %s\n' "${CANDIDATES[@]}"
-                exit 2
+  stage('Resolve build context') {
+    steps {
+      container('git') {
+        withEnv(["SERVICE=${params.SERVICE}"]) {
+          sh '''
+            set -eu
+            FOUND=""
+            for c in \
+              "services/${SERVICE}" \
+              "apps/${SERVICE}" \
+              "packages/${SERVICE}" \
+              "${SERVICE}" \
+              "apps/${SERVICE}/app" \
+              "services/${SERVICE}/app"
+            do
+              if [ -d "src/app/$c" ] && ls "src/app/$c"/Dockerfile* >/dev/null 2>&1; then
+                FOUND="$c"
+                break
               fi
-
-              echo "Detected build context: $FOUND"
-              echo "$FOUND" > .build_context_path
-            '''
-          }
+            done
+  
+            if [ -z "$FOUND" ]; then
+              echo "ERROR: '${SERVICE}' 서비스의 Dockerfile 경로를 찾지 못했습니다."
+              echo "다음 중 하나에 Dockerfile이 있어야 합니다:"
+              printf ' - %s\n' \
+                "services/${SERVICE}" "apps/${SERVICE}" "packages/${SERVICE}" \
+                "${SERVICE}" "apps/${SERVICE}/app" "services/${SERVICE}/app"
+              exit 2
+            fi
+  
+            echo "Detected build context: $FOUND"
+            echo "$FOUND" > .build_context_path
+          '''
         }
       }
     }
+  }
 
     stage('Build & Push image') {
       steps {
