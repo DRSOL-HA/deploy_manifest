@@ -80,13 +80,21 @@ spec:
           }
           withEnv(["BRANCH=${params.BRANCH}"]) {
             withCredentials([usernamePassword(
-              credentialsId: '2ebc3d3c-d09f-4180-8a21-74f50626cd2b',  // ← 너의 PAT 크리덴셜 ID
+              credentialsId: '2ebc3d3c-d09f-4180-8a21-74f50626cd2b',
               usernameVariable: 'GH_USER',
               passwordVariable: 'GH_PAT'
             )]) {
               sh '''
                 set -euo pipefail
                 rm -rf src && mkdir -p src
+    
+                # === 권한 체크 (토큰으로 원격 조회) ===
+                { set +x; } 2>/dev/null
+                git -c http.extraheader="AUTHORIZATION: Basic $(printf '%s:%s' "$GH_USER" "$GH_PAT" | base64 | tr -d '\n')" \
+                  ls-remote --heads "$REPO_HTTPS" >/dev/null
+                { set -x; } 2>/dev/null || true
+    
+                # === 정상이면 클론 ===
                 { set +x; } 2>/dev/null
                 git -c http.extraheader="AUTHORIZATION: Basic $(printf '%s:%s' "$GH_USER" "$GH_PAT" | base64 | tr -d '\n')" \
                   clone --depth=1 -b "$BRANCH" "$REPO_HTTPS" src/app
@@ -97,7 +105,7 @@ spec:
         }
       }
     }
-
+    
     stage('Build & Push image') {
       steps {
         container('buildctl') {
