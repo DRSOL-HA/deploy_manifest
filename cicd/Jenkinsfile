@@ -1,5 +1,5 @@
 def REPOS = [
-  // 모노레포 하나를 서비스별로 동일하게 사용
+  // 모노레포 하나(WebBoard-Service)에서 서비스별 컨텍스트 빌드
   'user-service': 'git@github.com:DRSOL-HA/WebBoard-Service.git',
   'file-service': 'git@github.com:DRSOL-HA/WebBoard-Service.git',
   'post-service': 'git@github.com:DRSOL-HA/WebBoard-Service.git',
@@ -32,11 +32,17 @@ spec:
     image: alpine/git:2.45.2
     command: ["cat"]
     tty: true
+    securityContext:
+      runAsUser: 0
+      runAsGroup: 0
 
   - name: yq
     image: ghcr.io/mikefarah/yq:4
     command: ["cat"]
     tty: true
+    securityContext:
+      runAsUser: 0
+      runAsGroup: 0
 
   volumes:
   - name: tls
@@ -84,7 +90,7 @@ spec:
           }
           withEnv(["BRANCH=${params.BRANCH}"]) {
             withCredentials([usernamePassword(
-              credentialsId: '2ebc3d3c-d09f-4180-8a21-74f50626cd2b', // GitHub PAT
+              credentialsId: '2ebc3d3c-d09f-4180-8a21-74f50626cd2b', // GitHub PAT (Username with password)
               usernameVariable: 'GH_USER',
               passwordVariable: 'GH_PAT'
             )]) {
@@ -150,7 +156,6 @@ spec:
                   "${SERVICE}"          "${HINT}" \
                   "apps/${SERVICE}/app" "apps/${HINT}/app" \
                   "services/${SERVICE}/app" "services/${HINT}/app"
-                # 참고: 필요시 여기서 'find src/app -maxdepth 3 -iname Dockerfile*'로 전체 검색 로그를 찍어보세요.
                 exit 2
               fi
 
@@ -222,7 +227,7 @@ spec:
           }
         }
 
-        // yq로 newTag 갱신 (대소문자 모두 매칭)
+        // yq로 newTag 갱신 (yq 컨테이너 root로 실행)
         container('yq') {
           withEnv(["SERVICE=${params.SERVICE}"]) {
             sh '''
@@ -235,7 +240,6 @@ spec:
                 exit 3
               fi
 
-              # 이미지 이름(소문자/대문자 모두 대비)
               export IMG_LOWER="ghcr.io/drsol-ha/board-${SERVICE}"
               export IMG_UPPER="ghcr.io/DRSOL-HA/board-${SERVICE}"
               export NEW_TAG="${IMAGE_TAG}"
