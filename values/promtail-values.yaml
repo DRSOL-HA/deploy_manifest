@@ -1,0 +1,3 @@
+clients:
+  - url: http://loki-gateway.loki-stack.svc/loki/api/v1/push
+    tenant_id: default

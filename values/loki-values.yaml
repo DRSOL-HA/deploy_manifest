@@ -8,37 +8,42 @@ loki:
   storage:
     type: s3
     bucketNames:
-      chunks: "loki-chunks"
-      ruler: "loki-ruler"
-      admin: "loki-admin"
+      chunks: loki-chunks
+      ruler: loki-ruler
+      admin: loki-admin
     s3:
-      endpoint: "https://minio.minio-tenant.svc:443"  # ← 콘솔 말고 S3 API 서비스
-      accessKeyId: "minio"
-      secretAccessKey: "minio123"
+      endpoint: "https://minio.minio-tenant.svc:443"
+      insecure: false
+      accessKeyId: minio
+      secretAccessKey: minio123
       s3ForcePathStyle: true
-      insecure: false  # HTTPS 사용
 
+  # OTLP/structured metadata 사용 시 v13 필요
   schemaConfig:
     configs:
-      - from: "2020-10-24"
+      - from: "2025-09-24"
         store: tsdb
         object_store: s3
-        schema: v12
+        schema: v13
         index:
           prefix: loki_index_
           period: 24h
 
-# SimpleScalable에서는 write/backend에 영속화를 설정
+  #보조/쿼리 제한          
+  limits_config:
+    retention_period: 168h       # 7일 (원하는 기간으로 조절)
+    max_query_length: 30d        # 필요시 확대
+
 write:
   persistence:
     enabled: true
-    storageClass: "local-path"
+    storageClass: local-path
     size: 20Gi
 
 backend:
   persistence:
     enabled: true
-    storageClass: "local-path"
+    storageClass: local-path
     size: 20Gi
 
 chunksCache:
