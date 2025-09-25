@@ -7,7 +7,7 @@ grafana:
   ingress:
     enabled: true
     ingressClassName: nginx
-    hosts: ["grafana.192.168.56.240.nip.io"]
+    hosts: grafana.drsol.cloud
     path: /
     pathType: Prefix
 
