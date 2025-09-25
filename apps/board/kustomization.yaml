@@ -12,13 +12,13 @@ resources:
   - file-service.service.yaml
 images:
 <<<<<<< HEAD
-  - name: ghcr.io/DRSOL-HA/board-user-service
+  - name: ghcr.io/drsol-ha/board-user-service
     newTag: "v16"
-  - name: ghcr.io/DRSOL-HA/board-file-service
+  - name: ghcr.io/drsol-ha/board-file-service
     newTag: "0.0.0"
-  - name: ghcr.io/DRSOL-HA/board-post-service
+  - name: ghcr.io/drsol-ha/board-post-service
     newTag: "0.0.0"
-  - name: ghcr.io/DRSOL-HA/board-frontend
+  - name: ghcr.io/drsol-ha/board-frontend
     newTag: "0.0.0"
-  - name: ghcr.io/DRSOL-HA/board-frontend
+  - name: ghcr.io/drsol-ha/board-frontend
     newTag: "0.0.0"  
