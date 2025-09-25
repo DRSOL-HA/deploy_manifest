@@ -33,9 +33,4 @@ exposeServices:
     type: ClusterIP
 
 ingress:
-  enabled: true
-  ingressClassName: nginx
-  apiHost: minio.board.local         
-  consoleHost: console.board.local  
-  tls:
-    enabled: false
+  enabled: false

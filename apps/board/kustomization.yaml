@@ -11,6 +11,7 @@ resources:
   - file-service.deployment.yaml
   - file-service.service.yaml
 images:
+<<<<<<< HEAD
   - name: ghcr.io/DRSOL-HA/board-user-service
     newTag: "v16"
   - name: ghcr.io/DRSOL-HA/board-file-service
@@ -19,3 +20,5 @@ images:
     newTag: "0.0.0"
   - name: ghcr.io/DRSOL-HA/board-frontend
     newTag: "0.0.0"
+  - name: ghcr.io/DRSOL-HA/board-frontend
+    newTag: "0.0.0"  

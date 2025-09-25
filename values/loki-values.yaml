@@ -17,6 +17,7 @@ loki:
       accessKeyId: minio
       secretAccessKey: minio123
       s3ForcePathStyle: true
+      region: "us-east-1"
 
   # OTLP/structured metadata 사용 시 v13 필요
   schemaConfig:
@@ -34,17 +35,53 @@ loki:
     retention_period: 168h       # 7일 (원하는 기간으로 조절)
     max_query_length: 30d        # 필요시 확대
 
+read:
+  extraVolumes:
+    - name: minio-ca
+      secret: { secretName: minio-ca }
+  extraVolumeMounts:
+    - name: minio-ca
+      mountPath: /etc/ssl/minio
+      readOnly: true
+  env:
+    - name: SSL_CERT_FILE
+      value: /etc/ssl/minio/ca.crt
+
 write:
+  podAntiAffinity: soft
   persistence:
     enabled: true
     storageClass: local-path
-    size: 20Gi
+    storageClassName: local-path  
+    size: 20Gi  
+  extraVolumes:
+    - name: minio-ca
+      secret: { secretName: minio-ca }
+  extraVolumeMounts:
+    - name: minio-ca
+      mountPath: /etc/ssl/minio
+      readOnly: true
+  env:
+    - name: SSL_CERT_FILE
+      value: /etc/ssl/minio/ca.crt
 
 backend:
+  podAntiAffinity: soft
   persistence:
     enabled: true
     storageClass: local-path
-    size: 20Gi
+    storageClassName: local-path  
+    size: 20Gi  
+  extraVolumes:
+    - name: minio-ca
+      secret: { secretName: minio-ca }
+  extraVolumeMounts:
+    - name: minio-ca
+      mountPath: /etc/ssl/minio
+      readOnly: true
+  env:
+    - name: SSL_CERT_FILE
+      value: /etc/ssl/minio/ca.crt
 
 chunksCache:
   enabled: false
