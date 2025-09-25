@@ -24,33 +24,24 @@ spec:
     command: ["cat"]
     tty: true
     volumeMounts:
-    - name: tls
-      mountPath: /tls
-      readOnly: true
+    - { name: tls, mountPath: /tls, readOnly: true }
+    - { name: workspace-volume, mountPath: /home/jenkins/agent, readOnly: false }
 
   - name: git
     image: alpine/git:2.45.2
     command: ["cat"]
     tty: true
-    securityContext:
-      runAsUser: 0
-      runAsGroup: 0
+    securityContext: { runAsUser: 0, runAsGroup: 0 }
     volumeMounts:
-    - name: workspace-volume
-      mountPath: /home/jenkins/agent
-      readOnly: false
+    - { name: workspace-volume, mountPath: /home/jenkins/agent, readOnly: false }
 
   - name: yq
     image: ghcr.io/mikefarah/yq:4
     command: ["cat"]
     tty: true
-    securityContext:
-      runAsUser: 0
-      runAsGroup: 0
+    securityContext: { runAsUser: 0, runAsGroup: 0 }
     volumeMounts:
-    - name: workspace-volume
-      mountPath: /home/jenkins/agent
-      readOnly: false
+    - { name: workspace-volume, mountPath: /home/jenkins/agent, readOnly: false }
 
   volumes:
   - name: tls
@@ -105,7 +96,7 @@ spec:
               passwordVariable: 'GH_PAT'
             )]) {
               sh '''
-                set -eu
+                set -euxo pipefail
                 rm -rf src && mkdir -p src
 
                 # 권한 체크
@@ -131,7 +122,7 @@ spec:
         container('git') {
           withEnv(["SERVICE=${params.SERVICE}"]) {
             sh '''
-              set -eu
+              set -euxo pipefail
               # SERVICE 힌트 (xxx-service -> xxx)
               HINT="$(printf '%s' "$SERVICE" | sed 's/-service$//')"
 
@@ -184,37 +175,46 @@ spec:
             usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_PAT')]) {
             withEnv(["SERVICE=${params.SERVICE}"]) {
               sh '''
-                set -eu
-    
+                set -euxo pipefail
+
                 CONTEXT_PATH="$(cat .build_context_path)"
                 IMAGE_NAME="${REGISTRY}/board-${SERVICE}"
-    
-                # META를 가장 먼저 정의 (set -u 보호)
+
+                # 메타파일 경로(절대경로로 지정)
                 META="${WORKSPACE:-$PWD}/.buildmeta.json"
-    
+
                 export HOME="${WORKSPACE:-$PWD}"
                 export DOCKER_CONFIG="$HOME/.docker"
                 mkdir -p "$DOCKER_CONFIG"
-    
+
+                # docker config.json 생성 (secret 로그 숨김)
                 { set +x; } 2>/dev/null
                 AUTH=$(printf '%s:%s' "$GHCR_USER" "$GHCR_PAT" | base64 | tr -d '\n')
                 cat > "$DOCKER_CONFIG/config.json" <<EOF
                 { "auths": { "ghcr.io": { "auth": "$AUTH" } } }
                 EOF
                 { set -x; } 2>/dev/null || true
-    
+
+                # 디버그
+                which buildctl || true
+                buildctl --version || true
+
+                # Build & Push (+ 메타파일)
                 buildctl --addr "$BUILDKIT_ADDR" \
                   --tlscacert /tls/ca.crt --tlscert /tls/client.crt --tlskey /tls/client.key \
                   build --frontend=dockerfile.v0 --progress=plain \
                   --local context="src/app/${CONTEXT_PATH}" \
                   --local dockerfile="src/app/${CONTEXT_PATH}" \
                   --output type=image,name="$IMAGE_NAME:$IMAGE_TAG",push=true \
-                  --metadata-file "$META"
-    
-                # 메타파일 생성 검증 + 디버그 출력
-                [ -s "$META" ] || { echo "ERROR: build metadata not created: $META"; exit 6; }
-                echo "Build metadata saved: $META"
-                ls -l "$META" || true
+                  --metadata-file "$META" || { echo "buildctl failed"; exit 10; }
+
+                # 메타파일 생성 확인(없으면 다음 스테이지에서 레지스트리 조회로 보완)
+                if [ -s "$META" ]; then
+                  echo "Build metadata saved: $META"
+                  head -c 200 "$META" || true
+                else
+                  echo "WARN: build metadata not created: $META (fallback to registry HEAD in next stage)"
+                fi
               '''
             }
           }
@@ -225,31 +225,56 @@ spec:
     stage('Extract digest') {
       steps {
         container('git') {
-          sh '''
-            set -eu
-            META="$WORKSPACE/.buildmeta.json"
-            OUT="$WORKSPACE/.image_digest"
+          withCredentials([usernamePassword(credentialsId: 'ghcr',
+            usernameVariable: 'U', passwordVariable: 'T')]) {
+            withEnv(["SERVICE=${params.SERVICE}"]) {
+              sh '''
+                set -euxo pipefail
+                META="${WORKSPACE:-$PWD}/.buildmeta.json"
+                OUT="${WORKSPACE:-$PWD}/.image_digest"
+                IMG_PATH="drsol-ha/board-${SERVICE}"
+                TAG="${IMAGE_TAG}"
 
-            if [ ! -s "$META" ]; then
-              echo "ERROR: build metadata not found: $META"; exit 6
-            fi
+                # 우선 메타에서 시도(jq 있으면 정확 키, 없으면 grep)
+                apk add --no-cache jq curl >/dev/null 2>&1 || true
+                DIGEST=""
 
-            # jq 있으면 정확 키로, 없으면 fallback(grep)
-            apk add --no-cache jq >/dev/null 2>&1 || true
-            if command -v jq >/dev/null 2>&1; then
-              DIGEST=$(jq -r '."containerimage.digest" // .containerimage.digest // ."containerimage.descriptor".digest // empty' "$META")
-            fi
-            if [ -z "${DIGEST:-}" ]; then
-              DIGEST=$(grep -oE 'sha256:[0-9a-f]{64}' "$META" | head -1 || true)
-            fi
+                if [ -s "$META" ]; then
+                  if command -v jq >/dev/null 2>&1; then
+                    DIGEST=$(jq -r '."containerimage.digest" // .containerimage.digest // ."containerimage.descriptor".digest // empty' "$META" || true)
+                  fi
+                  if [ -z "$DIGEST" ]; then
+                    DIGEST=$(grep -oE 'sha256:[0-9a-f]{64}' "$META" | head -1 || true)
+                  fi
+                fi
 
-            if [ -z "$DIGEST" ]; then
-              echo "ERROR: failed to extract digest from $META"; exit 7
-            fi
+                # 메타에서 못 찾으면 GHCR HEAD로 조회 (Basic → Bearer 순서)
+                if [ -z "$DIGEST" ]; then
+                  URL="https://ghcr.io/v2/${IMG_PATH}/manifests/${TAG}"
 
-            echo "$DIGEST" > "$OUT"
-            echo "Image digest: $DIGEST"
-          '''
+                  # v2s2 manifest로 강제
+                  HDR_ACCEPT="Accept: application/vnd.docker.distribution.manifest.v2+json"
+
+                  # Basic
+                  DIGEST=$(curl -sIL -u "$U:$T" -H "$HDR_ACCEPT" "$URL" \
+                    | awk -F': ' 'tolower($1)=="docker-content-digest" {gsub("\r","",$2); print $2}' | tail -1 || true)
+
+                  # Bearer fallback
+                  if [ -z "$DIGEST" ]; then
+                    DIGEST=$(curl -sIL -H "Authorization: Bearer $T" -H "$HDR_ACCEPT" "$URL" \
+                      | awk -F': ' 'tolower($1)=="docker-content-digest" {gsub("\r","",$2); print $2}' | tail -1 || true)
+                  fi
+                fi
+
+                if [ -z "$DIGEST" ]; then
+                  echo "ERROR: failed to obtain digest (meta & registry both failed)"; exit 11
+                fi
+
+                echo "$DIGEST" > "$OUT"
+                echo "Image digest: $DIGEST"
+              '''
+            }
+          }
         }
       }
     }
@@ -264,7 +289,7 @@ spec:
             passwordVariable: 'GH_PAT'
           )]) {
             sh '''
-              set -eu
+              set -euxo pipefail
               rm -rf manifest && mkdir -p manifest
               cd manifest
               { set +x; } 2>/dev/null
@@ -282,7 +307,7 @@ spec:
         container('yq') {
           withEnv(["SERVICE=${params.SERVICE}"]) {
             sh '''
-              set -eu
+              set -euxo pipefail
               cd manifest/repo
               FILE="apps/board/kustomization.yaml"
               [ -f "$FILE" ] || FILE="apps/webboard/kustomization.yaml"
@@ -318,7 +343,7 @@ spec:
             passwordVariable: 'GH_PAT'
           )]) {
             sh '''
-              set -eu
+              set -euxo pipefail
               cd manifest/repo
               if git diff --quiet -- .; then
                 echo "No manifest changes to commit."
