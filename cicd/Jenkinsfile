@@ -35,6 +35,10 @@ spec:
     securityContext:
       runAsUser: 0
       runAsGroup: 0
+    volumeMounts:
+    - name: workspace-volume
+      mountPath: /home/jenkins/agent
+      readOnly: false
 
   - name: yq
     image: ghcr.io/mikefarah/yq:4
@@ -43,11 +47,17 @@ spec:
     securityContext:
       runAsUser: 0
       runAsGroup: 0
+    volumeMounts:
+    - name: workspace-volume
+      mountPath: /home/jenkins/agent
+      readOnly: false
 
   volumes:
   - name: tls
     secret:
       secretName: buildkit-client-tls
+  - name: workspace-volume
+    emptyDir: {}
 """
     }
   }
@@ -190,12 +200,17 @@ spec:
                 EOF
                 { set -x; } 2>/dev/null || true
 
+                META="$WORKSPACE/.buildmeta.json"
+
                 buildctl --addr "$BUILDKIT_ADDR" \
                   --tlscacert /tls/ca.crt --tlscert /tls/client.crt --tlskey /tls/client.key \
                   build --frontend=dockerfile.v0 --progress=plain \
                   --local context="src/app/${CONTEXT_PATH}" \
                   --local dockerfile="src/app/${CONTEXT_PATH}" \
-                  --output type=image,name="$IMAGE_NAME:$IMAGE_TAG",push=true
+                  --output type=image,name="$IMAGE_NAME:$IMAGE_TAG",push=true \
+                  --metadata-file "$META"
+
+                echo "Build metadata saved: $META"
               '''
             }
           }
@@ -203,7 +218,39 @@ spec:
       }
     }
 
-    stage('Bump manifest tag') {
+    stage('Extract digest') {
+      steps {
+        container('git') {
+          sh '''
+            set -eu
+            META="$WORKSPACE/.buildmeta.json"
+            OUT="$WORKSPACE/.image_digest"
+
+            if [ ! -s "$META" ]; then
+              echo "ERROR: build metadata not found: $META"; exit 6
+            fi
+
+            # jq 있으면 정확 키로, 없으면 fallback(grep)
+            apk add --no-cache jq >/dev/null 2>&1 || true
+            if command -v jq >/dev/null 2>&1; then
+              DIGEST=$(jq -r '."containerimage.digest" // .containerimage.digest // ."containerimage.descriptor".digest // empty' "$META")
+            fi
+            if [ -z "${DIGEST:-}" ]; then
+              DIGEST=$(grep -oE 'sha256:[0-9a-f]{64}' "$META" | head -1 || true)
+            fi
+
+            if [ -z "$DIGEST" ]; then
+              echo "ERROR: failed to extract digest from $META"; exit 7
+            fi
+
+            echo "$DIGEST" > "$OUT"
+            echo "Image digest: $DIGEST"
+          '''
+        }
+      }
+    }
+
+    stage('Bump manifest (pin by digest)') {
       steps {
         // deploy_manifest clone (HTTPS + PAT)
         container('git') {
@@ -227,7 +274,7 @@ spec:
           }
         }
 
-        // yq로 newTag 갱신 (yq 컨테이너 root로 실행)
+        // yq로 digest 핀 (newTag 제거)
         container('yq') {
           withEnv(["SERVICE=${params.SERVICE}"]) {
             sh '''
@@ -242,12 +289,19 @@ spec:
 
               export IMG_LOWER="ghcr.io/drsol-ha/board-${SERVICE}"
               export IMG_UPPER="ghcr.io/DRSOL-HA/board-${SERVICE}"
-              export NEW_TAG="${IMAGE_TAG}"
+              DIGEST="$(cat "$WORKSPACE/.image_digest")"
+              if [ -z "$DIGEST" ]; then
+                echo "ERROR: digest file missing: $WORKSPACE/.image_digest"; exit 8
+              fi
 
               yq -i '
-                (.images[] | select((.name == strenv(IMG_LOWER)) or (.name == strenv(IMG_UPPER))).newTag)
-                = strenv(NEW_TAG)
+                (.images[] | select((.name == strenv(IMG_LOWER)) or (.name == strenv(IMG_UPPER))))
+                |= (.digest = strenv(DIGEST)) |
+                del(.images[] | select((.name == strenv(IMG_LOWER)) or (.name == strenv(IMG_UPPER))).newTag)
               ' "$FILE"
+
+              echo "Pinned image to digest: $DIGEST"
+              yq '.images[] | select(.name == strenv(IMG_LOWER) or .name == strenv(IMG_UPPER))' "$FILE"
             '''
           }
         }
@@ -265,8 +319,9 @@ spec:
               if git diff --quiet -- .; then
                 echo "No manifest changes to commit."
               else
+                SHORT=$(cut -c8-19 "$WORKSPACE/.image_digest" 2>/dev/null || echo "")
                 git add -A
-                git commit -m "ci: bump board-${SERVICE} -> ${IMAGE_TAG}"
+                git commit -m "ci: pin board-${SERVICE} to digest ${SHORT:-$(cat "$WORKSPACE/.image_digest")}"
                 { set +x; } 2>/dev/null
                 git -c http.extraheader="AUTHORIZATION: Basic $(printf '%s:%s' "$GH_USER" "$GH_PAT" | base64 | tr -d '\n')" \
                   push origin HEAD:main
