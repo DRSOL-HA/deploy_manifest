@@ -20,4 +20,4 @@ images:
   newTag: v3
 - name: ghcr.io/drsol-ha/board-user-service
   newName: ghcr.io/drsol-ha/board-user-service
-  newTag: v7
+  newTag: v8
