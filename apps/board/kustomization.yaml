@@ -19,4 +19,5 @@ images:
   newName: ghcr.io/drsol-ha/board-post-service
   newTag: v3
 - name: ghcr.io/drsol-ha/board-user-service
-  newTag: v4
+  newName: ghcr.io/drsol-ha/board-user-service
+  newTag: v7
