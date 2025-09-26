@@ -14,7 +14,8 @@ images:
 - name: ghcr.io/drsol-ha/board-file-service
   newTag: 0.0.0
 - name: ghcr.io/drsol-ha/board-frontend
-  newTag: 0.0.0
+  newName: ghcr.io/drsol-ha/board-frontend
+  newTag: v2
 - name: ghcr.io/drsol-ha/board-post-service
   newName: ghcr.io/drsol-ha/board-post-service
   newTag: v3
