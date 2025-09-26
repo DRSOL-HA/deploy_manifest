@@ -12,7 +12,8 @@ resources:
 - file-service.service.yaml
 images:
 - name: ghcr.io/drsol-ha/board-file-service
-  newTag: 0.0.0
+  newName: ghcr.io/drsol-ha/board-file-service
+  newTag: v5
 - name: ghcr.io/drsol-ha/board-frontend
   newName: ghcr.io/drsol-ha/board-frontend
   newTag: v2
