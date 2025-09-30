@@ -13,7 +13,7 @@ resources:
 images:
 - name: ghcr.io/drsol-ha/board-file-service
   newName: ghcr.io/drsol-ha/board-file-service
-  newTag: v5
+  newTag: v6
 - name: ghcr.io/drsol-ha/board-frontend
   newName: ghcr.io/drsol-ha/board-frontend
   newTag: v3
