@@ -16,7 +16,7 @@ images:
   newTag: v6
 - name: ghcr.io/drsol-ha/board-frontend
   newName: ghcr.io/drsol-ha/board-frontend
-  newTag: v4
+  newTag: v5
 - name: ghcr.io/drsol-ha/board-post-service
   newName: ghcr.io/drsol-ha/board-post-service
   newTag: v4
